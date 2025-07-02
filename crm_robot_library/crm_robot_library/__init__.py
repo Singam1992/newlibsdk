@@ -1,46 +1,87 @@
 import os
 from robot.libraries.BuiltIn import BuiltIn
-from robot.api import logger # Import logger for better Robot Framework logging
+from robot.api import logger
+from robot.variables.importer import VariableImporter # Used to parse .robot files for variables
+from robot.utils import DotDict # Robot Framework's dictionary type for variables
 
 class CrmRobotLibrary:
     ROBOT_LIBRARY_SCOPE = 'GLOBAL'
 
     def __init__(self):
-        logger.console("\\n--- CrmRobotLibrary __init__ START ---")
+        logger.console("\\n--- CrmRobotLibrary __init__ (v3) START ---")
+        # Store the path for get_variables to use
+        self.keywords_robot_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'keywords.robot')
+        logger.console(f"[V3 Init] Calculated keywords.robot path: {self.keywords_robot_path}")
+
+        if not os.path.exists(self.keywords_robot_path):
+            logger.error(f"[V3 Init] CRITICAL: keywords.robot not found at {self.keywords_robot_path}")
+            # Still raise an error here, as keywords won't load either
+            raise RuntimeError(f"keywords.robot not found at {self.keywords_robot_path}")
+        else:
+            logger.console(f"[V3 Init] SUCCESS: keywords.robot FOUND at {self.keywords_robot_path}")
+
+        logger.console("[V3 Init] Importing resource for keywords: keywords.robot")
         try:
-            current_file_path = os.path.abspath(__file__)
-            logger.console(f"Current __init__.py path: {current_file_path}")
+            BuiltIn().import_resource(self.keywords_robot_path)
+            logger.console("[V3 Init] SUCCESS: import_resource called for keywords.")
+        except Exception as e:
+            logger.error(f"[V3 Init] EXCEPTION during import_resource for keywords: {e}")
+            # Depending on the error, we might not want to continue,
+            # but get_variables might still be attempted by Robot.
 
-            module_directory = os.path.dirname(current_file_path)
-            logger.console(f"Module directory: {module_directory}")
+        logger.console("--- CrmRobotLibrary __init__ (v3) END ---")
 
-            keywords_robot_path = os.path.join(module_directory, 'keywords.robot')
-            logger.console(f"Calculated keywords.robot path: {keywords_robot_path}")
+    def get_variables(self):
+        logger.console("\\n--- CrmRobotLibrary get_variables (v3) START ---")
+        robot_vars = DotDict()
+        try:
+            # Ensure keywords_robot_path was set in __init__ and exists
+            if not hasattr(self, 'keywords_robot_path') or not self.keywords_robot_path:
+                logger.error("[V3 GetVariables] Error: self.keywords_robot_path not set prior to get_variables call!")
+                return robot_vars # Return empty if path isn't set
 
-            if not os.path.exists(keywords_robot_path):
-                logger.error(f"CRITICAL: keywords.robot not found at expected path: {keywords_robot_path}")
-                raise RuntimeError(f"keywords.robot not found at expected path: {keywords_robot_path}")
+            if not os.path.exists(self.keywords_robot_path):
+                logger.error(f"[V3 GetVariables] CRITICAL: keywords.robot not found at {self.keywords_robot_path} when trying to get variables.")
+                return robot_vars
+
+            logger.console(f"[V3 GetVariables] Attempting to import variables from: {self.keywords_robot_path}")
+            importer = VariableImporter(None) # Context can be None for simple path import
+            # The second argument to import_variables is 'args' (runtime variables), usually empty here.
+            imported_vars_list = importer.import_variables(self.keywords_robot_path, [])
+
+            logger.console(f"[V3 GetVariables] Variables found by VariableImporter: {len(imported_vars_list)}")
+
+            for var_object in imported_vars_list:
+                # var_object is an instance of robot.variables.Variable (or similar internal structure)
+                # It should have 'name' (e.g., '${foo}') and 'value'
+                # For scalar variables, 'value' is often a list of strings (what it's composed of).
+                # For list variables @{list}, 'value' is already a list of items.
+
+                # We need to strip ${} or @{} etc. from the name for the DotDict key
+                raw_name = var_object.name
+
+                if raw_name.startswith(('${', '@{', '&{', '%{')):
+                    clean_name = raw_name[2:-1] # Strip ${ } or @{ } etc.
+                else:
+                    # Should not happen for valid variable syntax in .robot files
+                    logger.warn(f"[V3 GetVariables] Encountered variable with unexpected name format: {raw_name}")
+                    clean_name = raw_name
+
+                current_value = var_object.resolve(BuiltIn().get_variables()) # Resolve the variable with current context
+
+                robot_vars[clean_name] = current_value
+                logger.console(f"[V3 GetVariables] Imported: {clean_name} = {current_value} (Raw name: {raw_name})")
+
+            if 'crm_automation_tab' not in robot_vars:
+                logger.warn("[V3 GetVariables] WARN: crm_automation_tab not found by VariableImporter in the final robot_vars dictionary.")
             else:
-                logger.console(f"SUCCESS: keywords.robot FOUND at {keywords_robot_path}")
-
-            logger.console("Attempting to import resource...")
-            BuiltIn().import_resource(keywords_robot_path)
-            logger.console("SUCCESS: import_resource called for keywords.robot")
-
-            # Test if a variable is accessible *immediately after* import_resource
-            test_var_value = BuiltIn().get_variable_value("${crm_automation_tab}", default="NOT_FOUND_DURING_INIT")
-            logger.console(f"Value of ${{crm_automation_tab}} immediately after import_resource in __init__: {test_var_value}")
-            if test_var_value == "NOT_FOUND_DURING_INIT":
-                logger.warn("WARN: ${crm_automation_tab} was NOT FOUND even during __init__ after import_resource.")
+                logger.console(f"[V3 GetVariables] SUCCESS: crm_automation_tab found, value = {robot_vars['crm_automation_tab']}")
 
         except Exception as e:
-            logger.error(f"EXCEPTION in CrmRobotLibrary __init__: {e}")
-            raise # Re-raise the exception to make it visible
+            # Log the full traceback for exceptions in get_variables
+            import traceback
+            logger.error(f"[V3 GetVariables] EXCEPTION: {e}\n{traceback.format_exc()}")
         finally:
-            logger.console("--- CrmRobotLibrary __init__ END ---")
-
-    def get_crm_automation_tab_variable(self):
-        logger.console("Executing keyword: get_crm_automation_tab_variable")
-        value = BuiltIn().get_variable_value("${crm_automation_tab}", default="NOT_FOUND_IN_KEYWORD")
-        logger.console(f"Value of ${{crm_automation_tab}} in keyword: {value}")
-        return value
+            logger.console(f"--- CrmRobotLibrary get_variables (v3) END (returning {len(robot_vars)} vars) ---")
+            return robot_vars
+```
