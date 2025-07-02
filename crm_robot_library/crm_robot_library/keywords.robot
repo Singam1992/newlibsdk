@@ -1,12 +1,12 @@
 *** Settings ***
 Library SeleniumLibrary
 Library String
-Resource ../resources/common.robot
-Resource ../pages/login_page.robot
-Resource ../pages/home_page.robot
-Resource ../pages/choose_an_app_page.robot
-Resource ../config/ui_config/ui_config.robot
-Resource ../utils/browser.utils.robot
+# Resource ../resources/common.robot
+# Resource ../pages/login_page.robot
+# Resource ../pages/home_page.robot
+# Resource ../pages/choose_an_app_page.robot
+# Resource ../config/ui_config/ui_config.robot
+# Resource ../utils/browser.utils.robot
 
 
 *** Variables ***
