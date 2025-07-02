@@ -13,7 +13,7 @@ setup(
     ],
     entry_points={
         'robotframework.libraries': [
-            'CrmRobotLibrary = crm_robot_library.keywords:CrmRobotLibrary',
+            'CrmRobotLibrary = crm_robot_library:CrmRobotLibrary',
         ],
     },
 )
